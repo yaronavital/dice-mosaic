@@ -1,0 +1,606 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Dice Mosaic Maker</title>
+<meta name="description" content="Turn any photo into a mosaic made of dice, get the exact count of each face, and print a section-by-section build plan.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,700;12..96,800&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@500;600&display=swap">
+<style>
+/* Layout: sticky control column on the left, mosaic + counts + build plan on the right; one column on phones */
+:root {
+  --bg: #eef0f3;
+  --panel: #ffffff;
+  --ink: #15171c;
+  --muted: #5d6470;
+  --line: #d6dae1;
+  --soft: #f5f6f8;
+  --accent: #d7263d;
+  --accent-ink: #ffffff;
+  --grout: #9aa0a8;
+  --display: "Bricolage Grotesque", "Arial Black", system-ui, sans-serif;
+  --body: "IBM Plex Sans", "Segoe UI", system-ui, sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, "Cascadia Mono", Consolas, monospace;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #101216; --panel: #181b21; --ink: #e8ebf0; --muted: #98a0ad; --line: #2b3038;
+    --soft: #1f232a; --accent: #ff5468; --accent-ink: #1a0508; --grout: #4a5059;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #101216; --panel: #181b21; --ink: #e8ebf0; --muted: #98a0ad; --line: #2b3038;
+  --soft: #1f232a; --accent: #ff5468; --accent-ink: #1a0508; --grout: #4a5059;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+html { padding-top: env(safe-area-inset-top, 0px); padding-bottom: env(safe-area-inset-bottom, 0px); }
+body {
+  margin: 0; background: var(--bg); color: var(--ink); font: 15px/1.5 var(--body);
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 24px 48px;
+}
+[hidden] { display: none !important; }
+header { max-width: 1280px; margin: 0 auto 22px; display: flex; flex-wrap: wrap; align-items: end; gap: 8px 20px; }
+h1 { font-family: var(--display); font-weight: 800; font-size: clamp(30px, 5vw, 46px); line-height: 1; margin: 0; letter-spacing: -.02em; }
+h1 .pip { display: inline-block; width: .32em; height: .32em; border-radius: 50%; background: var(--accent); vertical-align: .55em; margin-left: .06em; }
+header p { margin: 0; color: var(--muted); max-width: 60ch; }
+.app { max-width: 1280px; margin: 0 auto; display: grid; grid-template-columns: 330px minmax(0, 1fr); gap: 24px; align-items: start; }
+@media (max-width: 900px) { .app { grid-template-columns: minmax(0, 1fr); } }
+.panel { display: flex; flex-direction: column; gap: 14px; position: sticky; top: 16px; }
+@media (max-width: 900px) { .panel { position: static; } }
+.card { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 16px; display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.card h2 { font: 600 11px/1 var(--body); letter-spacing: .12em; text-transform: uppercase; color: var(--muted); margin: 0; }
+.drop {
+  border: 2px dashed var(--line); border-radius: 12px; padding: 18px; text-align: center; cursor: pointer;
+  display: flex; flex-direction: column; gap: 4px; align-items: center; transition: border-color .15s, background .15s;
+}
+.drop:hover, .drop.over { border-color: var(--accent); background: var(--soft); }
+.drop b { font-size: 15px; }
+.drop small { color: var(--muted); overflow-wrap: anywhere; }
+.drop input { position: absolute; width: 1px; height: 1px; opacity: 0; }
+.field { display: flex; flex-direction: column; gap: 6px; }
+.field > span { font-size: 13px; font-weight: 600; }
+.row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+input[type="number"], select {
+  font: 500 15px var(--mono); color: var(--ink); background: var(--soft); border: 1px solid var(--line);
+  border-radius: 8px; padding: 8px 10px; width: 100%; min-width: 0;
+}
+input[type="range"] { width: 100%; accent-color: var(--accent); }
+.check { display: flex; gap: 8px; align-items: center; font-size: 14px; }
+select { font-family: var(--body); }
+.check input { accent-color: var(--accent); width: 16px; height: 16px; }
+.hint { font-size: 13px; color: var(--muted); margin: 0; }
+.hint b { color: var(--ink); font-family: var(--mono); font-weight: 600; }
+.warn { color: var(--accent); }
+.btn {
+  font: 600 14px var(--body); border-radius: 10px; padding: 10px 14px; cursor: pointer;
+  background: var(--accent); color: var(--accent-ink); border: 1px solid var(--accent);
+}
+.btn.ghost { background: transparent; color: var(--ink); border-color: var(--line); }
+.btn:hover { filter: brightness(1.06); }
+.btns { display: flex; flex-wrap: wrap; gap: 8px; }
+button:focus-visible, input:focus-visible, select:focus-visible, .drop:focus-within { outline: 3px solid var(--accent); outline-offset: 2px; }
+
+.stage { display: flex; flex-direction: column; gap: 18px; min-width: 0; }
+.summary { display: flex; flex-wrap: wrap; gap: 10px 28px; align-items: baseline; }
+.big { font: 800 clamp(28px, 4vw, 40px)/1 var(--display); font-variant-numeric: tabular-nums; }
+.big small { font: 500 14px var(--body); color: var(--muted); margin-left: 6px; }
+.facts { color: var(--muted); font-size: 14px; }
+.facts b { color: var(--ink); font-family: var(--mono); }
+.counts { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; }
+.count { display: flex; align-items: center; gap: 10px; padding: 8px 10px; background: var(--soft); border-radius: 10px; }
+.count img { width: 34px; height: 34px; flex: none; border-radius: 6px; box-shadow: 0 0 0 1px var(--line); }
+.count div { display: flex; flex-direction: column; line-height: 1.2; min-width: 0; }
+.count b { font: 600 16px var(--mono); font-variant-numeric: tabular-nums; }
+.count small { color: var(--muted); font-size: 12px; }
+.viewbar { display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: center; justify-content: space-between; }
+.canvas-wrap { position: relative; overflow: auto; max-height: 78vh; border-radius: 10px; background: var(--soft); }
+.canvas-wrap canvas { display: block; }
+.canvas-wrap.fit canvas { width: 100%; height: auto; }
+#overlay { position: absolute; left: 0; top: 0; pointer-events: none; }
+.plan-nav { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.plan-nav select { width: auto; }
+.plan-scroll { overflow: auto; max-height: 70vh; border: 1px solid var(--line); border-radius: 10px; }
+table.plan { border-collapse: collapse; font: 600 12px var(--mono); font-variant-numeric: tabular-nums; }
+table.plan th, table.plan td { width: 28px; height: 28px; min-width: 28px; text-align: center; border: 1px solid var(--line); padding: 0; }
+table.plan th { background: var(--soft); color: var(--muted); font-weight: 500; font-size: 10px; position: sticky; top: 0; }
+table.plan th.rh { position: sticky; left: 0; }
+table.plan td { background: #ffffff; color: #15171c; }
+table.plan td.b { background: #1b1c1f; color: #ffffff; }
+.legend { font-size: 13px; color: var(--muted); }
+
+#print { display: none; }
+@media print {
+  @page { size: A4 portrait; margin: 11mm; }
+  body { background: #fff; color: #000; padding: 0; }
+  body > *:not(#print) { display: none !important; }
+  #print { display: block; font-family: var(--body); }
+  .page { break-after: page; }
+  .page:last-child { break-after: auto; }
+  .page h3 { font: 800 20pt/1.1 var(--display); margin: 0 0 2mm; }
+  .page p { margin: 0 0 3mm; font-size: 10pt; }
+  .page .ov { width: 100%; max-height: 150mm; object-fit: contain; display: block; margin: 0 auto 4mm; }
+  .ptable { border-collapse: collapse; table-layout: fixed; font-family: var(--mono); -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  .ptable th, .ptable td {
+    width: calc(176mm / var(--n)); height: calc(176mm / var(--n)); border: .25mm solid #888;
+    text-align: center; padding: 0; font-size: calc(96mm / var(--n)); font-weight: 600;
+  }
+  .ptable th { font-size: calc(60mm / var(--n)); color: #555; font-weight: 500; background: #f1f1f1; }
+  .ptable td.b { background: #1b1c1f; color: #fff; }
+  .pcounts { display: flex; flex-wrap: wrap; gap: 2mm 6mm; font: 10pt var(--mono); margin: 3mm 0; }
+  .map { border-collapse: collapse; font: 8pt var(--mono); }
+  .map td { border: .25mm solid #888; padding: 1mm 1.5mm; text-align: center; }
+}
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+</head>
+<body>
+<header>
+  <h1>Dice Mosaic<span class="pip"></span></h1>
+  <p>Turn a photo into a picture made of dice. Pick how many dice to use, get the count of every face, and print a numbered plan to build it at home.</p>
+</header>
+
+<main class="app">
+  <aside class="panel">
+    <section class="card">
+      <h2>1 · Photo</h2>
+      <label class="drop" id="drop">
+        <input type="file" id="file" accept="image/*">
+        <b>Choose a photo</b>
+        <small id="fileName">or drop one here. A sample picture is loaded.</small>
+      </label>
+    </section>
+
+    <section class="card">
+      <h2>2 · Resolution</h2>
+      <label class="field"><span>Number of dice (1 – 100,000)</span>
+        <input type="number" id="total" min="1" max="100000" step="1" value="2500">
+      </label>
+      <input type="range" id="totalRange" min="0" max="1000" step="1" aria-label="Number of dice slider">
+      <div class="row2">
+        <label class="field"><span>Columns</span><input type="number" id="cols" min="1" max="100000"></label>
+        <label class="field"><span>Rows</span><input type="number" id="rows" min="1" max="100000"></label>
+      </div>
+      <label class="check"><input type="checkbox" id="keep" checked> Keep the photo's proportions</label>
+      <p class="hint" id="gridHint"></p>
+    </section>
+
+    <section class="card">
+      <h2>3 · Dice</h2>
+      <label class="field"><span>Dice colors</span>
+        <select id="style">
+          <option value="white">White dice, black pips (6 shades)</option>
+          <option value="black">Black dice, white pips (6 shades)</option>
+          <option value="both">White + black dice (12 shades)</option>
+        </select>
+      </label>
+      <label class="field"><span>Size of one die (mm)</span>
+        <input type="number" id="mm" min="3" max="50" step="0.5" value="16">
+      </label>
+    </section>
+
+    <section class="card">
+      <h2>4 · Adjust</h2>
+      <label class="field"><span>Brightness</span><input type="range" id="bright" min="-100" max="100" value="0"></label>
+      <label class="field"><span>Contrast</span><input type="range" id="contrast" min="-100" max="100" value="0"></label>
+      <label class="check"><input type="checkbox" id="auto" checked> Auto levels (use the full range of dice)</label>
+      <label class="check"><input type="checkbox" id="dither" checked> Dithering (smoother shading)</label>
+      <label class="check"><input type="checkbox" id="invert"> Invert</label>
+    </section>
+
+    <section class="card">
+      <h2>5 · Build plan</h2>
+      <label class="field"><span>Section size (dice per side, one printed page each)</span>
+        <select id="sec">
+          <option>10</option><option>15</option><option selected>20</option><option>25</option><option>30</option><option>40</option>
+        </select>
+      </label>
+      <div class="btns">
+        <button class="btn" id="print">Print build plan</button>
+        <button class="btn ghost" id="png">Download image</button>
+        <button class="btn ghost" id="csv">Download CSV</button>
+      </div>
+      <p class="hint" id="printHint"></p>
+    </section>
+  </aside>
+
+  <section class="stage">
+    <div class="card">
+      <div class="summary">
+        <div class="big" id="bigTotal">0<small>dice</small></div>
+        <div class="facts" id="facts"></div>
+      </div>
+      <div class="counts" id="counts"></div>
+      <p class="hint" id="countHint"></p>
+    </div>
+
+    <div class="card">
+      <div class="viewbar">
+        <h2>Preview</h2>
+        <div class="btns">
+          <label class="check"><input type="checkbox" id="showSec"> Show sections</label>
+          <button class="btn ghost" id="zoom">Zoom in</button>
+        </div>
+      </div>
+      <div class="canvas-wrap fit" id="wrap">
+        <canvas id="cv" aria-label="Dice mosaic preview"></canvas>
+        <canvas id="overlay" aria-hidden="true"></canvas>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="viewbar">
+        <h2>Build plan</h2>
+        <div class="plan-nav">
+          <button class="btn ghost" id="prev" aria-label="Previous section">←</button>
+          <select id="secPick" aria-label="Section"></select>
+          <button class="btn ghost" id="next" aria-label="Next section">→</button>
+        </div>
+      </div>
+      <p class="legend" id="secInfo"></p>
+      <div class="plan-scroll"><table class="plan" id="planTable"></table></div>
+      <p class="legend">Each number is the face to put on top. Dark cells are black dice. Row letters and column numbers match the whole picture, so sections line up when you join them.</p>
+    </div>
+  </section>
+</main>
+
+<div id="print"></div>
+
+<script>
+const MAX = 100000;
+const $ = id => document.getElementById(id);
+const fmt = n => n.toLocaleString("en-US");
+const PIP = { tl: [.26, .26], tr: [.74, .26], ml: [.26, .5], c: [.5, .5], mr: [.74, .5], bl: [.26, .74], br: [.74, .74] };
+const FACES = { 1: ["c"], 2: ["tr", "bl"], 3: ["tr", "c", "bl"], 4: ["tl", "tr", "bl", "br"], 5: ["tl", "tr", "c", "bl", "br"], 6: ["tl", "tr", "ml", "mr", "bl", "br"] };
+// code 0..5 = white die face 1..6, code 6..11 = black die face 1..6
+const faceOf = code => (code % 6) + 1;
+const isBlack = code => code >= 6;
+const STYLE_CODES = { white: [0, 1, 2, 3, 4, 5], black: [6, 7, 8, 9, 10, 11], both: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11] };
+
+let src = null, srcName = "sample";
+let grid = { cols: 0, rows: 0, codes: new Uint8Array(0), counts: new Array(12).fill(0) };
+let curSection = 0, timer = null;
+
+/* ---------- Dice sprites ---------- */
+function drawDie(ctx, x, y, s, code, rounded = true) {
+  const black = isBlack(code);
+  ctx.fillStyle = black ? "#1b1c1f" : "#f7f7f4";
+  const r = rounded ? s * 0.16 : 0;
+  ctx.beginPath();
+  ctx.roundRect ? ctx.roundRect(x, y, s, s, r) : ctx.rect(x, y, s, s);
+  ctx.fill();
+  ctx.fillStyle = black ? "#f4f4f0" : "#17181b";
+  for (const p of FACES[faceOf(code)]) {
+    ctx.beginPath();
+    ctx.arc(x + PIP[p][0] * s, y + PIP[p][1] * s, s * 0.095, 0, Math.PI * 2);
+    ctx.fill();
+  }
+}
+// Real brightness of each face, measured from a drawn die
+const TONES = Array.from({ length: 12 }, (_, code) => {
+  const c = document.createElement("canvas"); c.width = c.height = 60;
+  const x = c.getContext("2d"); drawDie(x, 0, 0, 60, code, false);
+  const d = x.getImageData(0, 0, 60, 60).data; let sum = 0;
+  for (let i = 0; i < d.length; i += 4) sum += 0.2126 * d[i] + 0.7152 * d[i + 1] + 0.0722 * d[i + 2];
+  return sum / (d.length / 4) / 255;
+});
+const ICONS = Array.from({ length: 12 }, (_, code) => {
+  const c = document.createElement("canvas"); c.width = c.height = 68;
+  drawDie(c.getContext("2d"), 0, 0, 68, code); return c.toDataURL();
+});
+
+/* ---------- Sample picture ---------- */
+function sample() {
+  const c = document.createElement("canvas"); c.width = 640; c.height = 520;
+  const x = c.getContext("2d");
+  const bg = x.createLinearGradient(0, 0, 640, 520); bg.addColorStop(0, "#1a2a44"); bg.addColorStop(1, "#c9d6e8");
+  x.fillStyle = bg; x.fillRect(0, 0, 640, 520);
+  const f = x.createRadialGradient(270, 200, 30, 320, 260, 210); f.addColorStop(0, "#fff6c8"); f.addColorStop(.7, "#f1c232"); f.addColorStop(1, "#7a5a08");
+  x.fillStyle = f; x.beginPath(); x.arc(320, 260, 200, 0, Math.PI * 2); x.fill();
+  x.fillStyle = "#20160a";
+  x.beginPath(); x.ellipse(250, 210, 26, 40, 0, 0, Math.PI * 2); x.fill();
+  x.beginPath(); x.ellipse(390, 210, 26, 40, 0, 0, Math.PI * 2); x.fill();
+  x.lineWidth = 26; x.lineCap = "round"; x.strokeStyle = "#20160a";
+  x.beginPath(); x.arc(320, 270, 120, 0.18 * Math.PI, 0.82 * Math.PI); x.stroke();
+  return c;
+}
+
+/* ---------- Grid size ---------- */
+const aspect = () => src ? src.width / src.height : 1;
+function fromTotal(n) {
+  n = Math.max(1, Math.min(MAX, Math.round(n) || 1));
+  let cols = Math.max(1, Math.round(Math.sqrt(n * aspect())));
+  let rows = Math.max(1, Math.round(n / cols));
+  while (cols * rows > MAX) rows > cols ? rows-- : cols--;
+  return { cols, rows };
+}
+function setGrid(cols, rows, from) {
+  cols = Math.max(1, Math.round(cols) || 1); rows = Math.max(1, Math.round(rows) || 1);
+  let clamped = false;
+  while (cols * rows > MAX) { clamped = true; rows > cols ? rows-- : cols--; }
+  $("cols").value = cols; $("rows").value = rows;
+  if (from !== "total") $("total").value = cols * rows;
+  syncRange();
+  const t = +$("total").value, actual = cols * rows;
+  let h = `Grid: <b>${fmt(cols)} × ${fmt(rows)}</b> = <b>${fmt(actual)}</b> dice.`;
+  if (from === "total" && actual !== t) h += ` That's the closest grid to ${fmt(t)} that keeps the photo's shape. Turn off "Keep the photo's proportions" to set columns and rows exactly.`;
+  if (clamped) h += ` <span class="warn">Limited to ${fmt(MAX)} dice.</span>`;
+  $("gridHint").innerHTML = h;
+  schedule();
+}
+function syncRange() { $("totalRange").value = Math.round(Math.log10(Math.max(1, +$("total").value)) * 200); }
+
+/* ---------- Image → dice ---------- */
+function sampleLuma(cols, rows) {
+  // Center-crop the photo to the grid's shape, then shrink in steps for a clean average
+  const ga = cols / rows, ia = src.width / src.height;
+  let sw = src.width, sh = src.height, sx = 0, sy = 0;
+  if (ia > ga) { sw = src.height * ga; sx = (src.width - sw) / 2; } else { sh = src.width / ga; sy = (src.height - sh) / 2; }
+  let cur = src, cw = sw, ch = sh;
+  while (cw / 2 >= cols * 2 && ch / 2 >= rows * 2) {
+    const c = document.createElement("canvas"); c.width = Math.round(cw / 2); c.height = Math.round(ch / 2);
+    const x = c.getContext("2d"); x.imageSmoothingQuality = "high";
+    x.drawImage(cur, sx, sy, cw, ch, 0, 0, c.width, c.height);
+    cur = c; sx = sy = 0; cw = c.width; ch = c.height;
+  }
+  const c = document.createElement("canvas"); c.width = cols; c.height = rows;
+  const x = c.getContext("2d", { willReadFrequently: true }); x.imageSmoothingQuality = "high";
+  x.fillStyle = "#fff"; x.fillRect(0, 0, cols, rows);
+  x.drawImage(cur, sx, sy, cw, ch, 0, 0, cols, rows);
+  const d = x.getImageData(0, 0, cols, rows).data, L = new Float32Array(cols * rows);
+  for (let i = 0; i < L.length; i++) L[i] = (0.2126 * d[i * 4] + 0.7152 * d[i * 4 + 1] + 0.0722 * d[i * 4 + 2]) / 255;
+  return L;
+}
+
+function compute() {
+  const cols = +$("cols").value, rows = +$("rows").value;
+  const L = sampleLuma(cols, rows), n = L.length;
+  if ($("auto").checked && n > 1) {
+    const s = Float32Array.from(L).sort();
+    const lo = s[Math.floor(n * 0.01)], hi = s[Math.min(n - 1, Math.ceil(n * 0.99))];
+    if (hi - lo > 0.02) for (let i = 0; i < n; i++) L[i] = (L[i] - lo) / (hi - lo);
+  }
+  const b = +$("bright").value / 100 * 0.5, cv = +$("contrast").value / 100;
+  const k = cv >= 0 ? 1 + cv * 3 : 1 + cv, inv = $("invert").checked;
+  for (let i = 0; i < n; i++) {
+    let v = (L[i] - 0.5) * k + 0.5 + b;
+    if (inv) v = 1 - v;
+    L[i] = Math.min(1, Math.max(0, v));
+  }
+  // Spread the available dice shades over 0..1 and match each cell to the nearest one
+  const codes = STYLE_CODES[$("style").value];
+  const tones = codes.map(c => TONES[c]), lo = Math.min(...tones), hi = Math.max(...tones);
+  const levels = codes.map((c, i) => ({ c, t: (tones[i] - lo) / (hi - lo) })).sort((a, b) => a.t - b.t);
+  const out = new Uint8Array(n), counts = new Array(12).fill(0), dither = $("dither").checked;
+  for (let y = 0; y < rows; y++) for (let x = 0; x < cols; x++) {
+    const i = y * cols + x, v = L[i];
+    let best = levels[0], bd = 9;
+    for (const l of levels) { const d = Math.abs(l.t - v); if (d < bd) { bd = d; best = l; } }
+    out[i] = best.c; counts[best.c]++;
+    if (dither) {
+      const e = v - best.t;
+      if (x + 1 < cols) L[i + 1] += e * 7 / 16;
+      if (y + 1 < rows) {
+        if (x > 0) L[i + cols - 1] += e * 3 / 16;
+        L[i + cols] += e * 5 / 16;
+        if (x + 1 < cols) L[i + cols + 1] += e / 16;
+      }
+    }
+  }
+  grid = { cols, rows, codes: out, counts };
+  draw(); renderCounts(); buildSectionPicker(); renderSection();
+}
+
+/* ---------- Drawing ---------- */
+function cellSize() { return Math.max(3, Math.min(48, Math.floor(3200 / Math.max(grid.cols, grid.rows)))); }
+function draw() {
+  const cs = cellSize(), cv = $("cv"), x = cv.getContext("2d");
+  cv.width = grid.cols * cs; cv.height = grid.rows * cs;
+  x.fillStyle = getComputedStyle(document.documentElement).getPropertyValue("--grout").trim() || "#9aa0a8";
+  x.fillRect(0, 0, cv.width, cv.height);
+  const sprites = STYLE_CODES.both.map(code => {
+    const c = document.createElement("canvas"); c.width = c.height = cs;
+    drawDie(c.getContext("2d"), 0, 0, cs, code, cs >= 8); return c;
+  });
+  for (let r = 0; r < grid.rows; r++) for (let c = 0; c < grid.cols; c++)
+    x.drawImage(sprites[grid.codes[r * grid.cols + c]], c * cs, r * cs);
+  drawOverlay();
+}
+function drawOverlay() {
+  const ov = $("overlay"), cv = $("cv"), cs = cellSize();
+  ov.width = cv.width; ov.height = cv.height;
+  ov.style.width = cv.getBoundingClientRect().width + "px";
+  ov.style.height = cv.getBoundingClientRect().height + "px";
+  const x = ov.getContext("2d");
+  x.clearRect(0, 0, ov.width, ov.height);
+  if (!$("showSec").checked) return;
+  paintSections(x, cs, ov.width, ov.height);
+}
+function paintSections(x, cs, w, h) {
+  const s = +$("sec").value, lw = Math.max(2, w / 500);
+  x.strokeStyle = "#d7263d"; x.lineWidth = lw;
+  x.font = `700 ${Math.max(12, Math.min(s * cs * 0.28, w / 18))}px "IBM Plex Mono", monospace`;
+  x.textBaseline = "top";
+  for (let r = 0; r * s < grid.rows; r++) for (let c = 0; c * s < grid.cols; c++) {
+    const px = c * s * cs, py = r * s * cs, pw = Math.min(s, grid.cols - c * s) * cs, ph = Math.min(s, grid.rows - r * s) * cs;
+    x.strokeRect(px + lw / 2, py + lw / 2, pw - lw, ph - lw);
+    const label = secName(r, c), pad = lw * 2.5;
+    const tw = x.measureText(label).width, th = parseFloat(x.font) * 1.1;
+    x.fillStyle = "rgba(215,38,61,.92)"; x.fillRect(px + lw, py + lw, tw + pad * 2, th + pad);
+    x.fillStyle = "#fff"; x.fillText(label, px + lw + pad, py + lw + pad / 2 + 1);
+  }
+}
+
+/* ---------- Counts ---------- */
+const NAMES = ["one", "two", "three", "four", "five", "six"];
+function renderCounts() {
+  const total = grid.cols * grid.rows, mm = +$("mm").value || 16;
+  $("bigTotal").innerHTML = `${fmt(total)}<small>dice</small>`;
+  const w = grid.cols * mm / 10, h = grid.rows * mm / 10;
+  const whites = grid.counts.slice(0, 6).reduce((a, b) => a + b, 0), blacks = total - whites;
+  let facts = `<b>${fmt(grid.cols)}</b> columns × <b>${fmt(grid.rows)}</b> rows · finished size <b>${w.toFixed(1)} × ${h.toFixed(1)} cm</b> with ${mm} mm dice`;
+  if ($("style").value === "both") facts += ` · <b>${fmt(whites)}</b> white + <b>${fmt(blacks)}</b> black`;
+  $("facts").innerHTML = facts;
+  $("counts").innerHTML = STYLE_CODES[$("style").value].map(code => `
+    <div class="count"><img src="${ICONS[code]}" alt="">
+      <div><b>${fmt(grid.counts[code])}</b><small>${isBlack(code) ? "black" : "white"} · ${NAMES[faceOf(code) - 1]}</small></div></div>`).join("");
+  $("countHint").textContent = $("style").value === "both"
+    ? `Every die has all six faces, so you need ${fmt(whites)} white dice and ${fmt(blacks)} black dice in total. The counts above show how many to place with each face up.`
+    : `Every die has all six faces, so you need ${fmt(total)} dice in total. The counts above show how many to place with each face up.`;
+}
+
+/* ---------- Sections / build plan ---------- */
+function letters(i) { let s = ""; i++; while (i > 0) { const m = (i - 1) % 26; s = String.fromCharCode(65 + m) + s; i = Math.floor((i - 1) / 26); } return s; }
+const secName = (r, c) => letters(r) + (c + 1);
+function sections() {
+  const s = +$("sec").value, list = [];
+  for (let r = 0; r * s < grid.rows; r++) for (let c = 0; c * s < grid.cols; c++)
+    list.push({ r, c, r0: r * s, r1: Math.min(grid.rows, (r + 1) * s), c0: c * s, c1: Math.min(grid.cols, (c + 1) * s) });
+  return list;
+}
+function buildSectionPicker() {
+  const list = sections();
+  curSection = Math.min(curSection, list.length - 1);
+  const pick = $("secPick");
+  pick.innerHTML = list.map((s, i) => `<option value="${i}">Section ${secName(s.r, s.c)}</option>`).join("");
+  pick.value = curSection;
+  const rowsS = Math.ceil(grid.rows / +$("sec").value), colsS = Math.ceil(grid.cols / +$("sec").value);
+  $("printHint").textContent = `${list.length} section${list.length > 1 ? "s" : ""} (${rowsS} × ${colsS}), one A4 page each, plus an overview page.${list.length > 300 ? " That's a lot of paper. A bigger section size prints fewer pages." : ""}`;
+}
+function tableHTML(s) {
+  let h = `<tr><th class="rh"></th>`;
+  for (let c = s.c0; c < s.c1; c++) h += `<th>${c + 1}</th>`;
+  h += `</tr>`;
+  for (let r = s.r0; r < s.r1; r++) {
+    h += `<tr><th class="rh">${letters(r)}</th>`;
+    for (let c = s.c0; c < s.c1; c++) {
+      const code = grid.codes[r * grid.cols + c];
+      h += isBlack(code) ? `<td class="b">${faceOf(code)}</td>` : `<td>${faceOf(code)}</td>`;
+    }
+    h += `</tr>`;
+  }
+  return h;
+}
+function sectionCounts(s) {
+  const k = new Array(12).fill(0);
+  for (let r = s.r0; r < s.r1; r++) for (let c = s.c0; c < s.c1; c++) k[grid.codes[r * grid.cols + c]]++;
+  return STYLE_CODES[$("style").value].filter(code => k[code]).map(code => `${isBlack(code) ? "black " : ""}${faceOf(code)}: ${fmt(k[code])}`).join(" · ");
+}
+function renderSection() {
+  const s = sections()[curSection];
+  $("secInfo").innerHTML = `<b>Section ${secName(s.r, s.c)}</b> · rows ${letters(s.r0)}–${letters(s.r1 - 1)}, columns ${s.c0 + 1}–${s.c1} · ${sectionCounts(s)}`;
+  $("planTable").innerHTML = tableHTML(s);
+}
+
+function printPlan() {
+  const list = sections(), cs = cellSize();
+  const c = document.createElement("canvas"); c.width = $("cv").width; c.height = $("cv").height;
+  const x = c.getContext("2d"); x.drawImage($("cv"), 0, 0); paintSections(x, cs, c.width, c.height);
+  const style = $("style").value, total = grid.cols * grid.rows, mm = +$("mm").value || 16;
+  const counts = STYLE_CODES[style].map(code => `<span>${isBlack(code) ? "Black" : "White"} ${faceOf(code)}: <b>${fmt(grid.counts[code])}</b></span>`).join("");
+  const sCols = Math.ceil(grid.cols / +$("sec").value), sRows = Math.ceil(grid.rows / +$("sec").value);
+  let map = "";
+  if (sCols <= 30) {
+    map = `<table class="map">`;
+    for (let r = 0; r < sRows; r++) { map += "<tr>"; for (let k = 0; k < sCols; k++) map += `<td>${secName(r, k)}</td>`; map += "</tr>"; }
+    map += "</table>";
+  }
+  let html = `<div class="page"><h3>Dice mosaic build plan</h3>
+    <p>${fmt(grid.cols)} columns × ${fmt(grid.rows)} rows = <b>${fmt(total)} dice</b> · finished size ${(grid.cols * mm / 10).toFixed(1)} × ${(grid.rows * mm / 10).toFixed(1)} cm with ${mm} mm dice · photo: ${srcName.replace(/</g, "&lt;")}</p>
+    <img class="ov" src="${c.toDataURL("image/png")}" alt="">
+    <div class="pcounts">${counts}</div>
+    <p>Each following page is one section. The number in each square is the face to put on top; dark squares are black dice. Row letters and column numbers run across the whole picture.</p>
+    ${map}</div>`;
+  for (const s of list) {
+    html += `<div class="page"><h3>Section ${secName(s.r, s.c)}</h3>
+      <p>Rows ${letters(s.r0)}–${letters(s.r1 - 1)}, columns ${s.c0 + 1}–${s.c1} · ${sectionCounts(s)}</p>
+      <table class="ptable" style="--n:${+$("sec").value + 1}">${tableHTML(s)}</table></div>`;
+  }
+  $("print").innerHTML = html;
+  setTimeout(() => window.print(), 300);
+}
+
+/* ---------- Downloads ---------- */
+function save(blob, name) {
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob); a.download = name;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+}
+const base = () => `dice-mosaic-${grid.cols}x${grid.rows}`;
+
+/* ---------- Wiring ---------- */
+function schedule() { clearTimeout(timer); timer = setTimeout(() => { if (src) compute(); }, 120); }
+function loadFile(f) {
+  if (!f || !f.type.startsWith("image/")) { $("fileName").textContent = "That file isn't an image. Choose a JPG, PNG or similar."; return; }
+  const img = new Image();
+  img.onload = () => {
+    src = img; srcName = f.name; $("fileName").textContent = f.name;
+    if ($("keep").checked) { const g = fromTotal(+$("total").value); setGrid(g.cols, g.rows, "total"); } else schedule();
+  };
+  img.onerror = () => { $("fileName").textContent = "Couldn't read that image. Try a JPG or PNG."; };
+  img.src = URL.createObjectURL(f);
+}
+
+$("file").addEventListener("change", e => loadFile(e.target.files[0]));
+const drop = $("drop");
+["dragenter", "dragover"].forEach(t => drop.addEventListener(t, e => { e.preventDefault(); drop.classList.add("over"); }));
+["dragleave", "drop"].forEach(t => drop.addEventListener(t, e => { e.preventDefault(); drop.classList.remove("over"); }));
+drop.addEventListener("drop", e => loadFile(e.dataTransfer.files[0]));
+
+$("total").addEventListener("input", () => {
+  const n = Math.min(MAX, Math.max(1, +$("total").value || 1));
+  if ($("keep").checked) { const g = fromTotal(n); setGrid(g.cols, g.rows, "total"); }
+  else { const c = Math.max(1, Math.round(Math.sqrt(n * aspect()))); setGrid(c, Math.max(1, Math.round(n / c)), "total"); }
+});
+$("total").addEventListener("change", () => { const v = Math.min(MAX, Math.max(1, Math.round(+$("total").value || 1))); $("total").value = v; });
+$("totalRange").addEventListener("input", () => {
+  $("total").value = Math.round(Math.pow(10, +$("totalRange").value / 200));
+  const g = fromTotal(+$("total").value); setGrid(g.cols, g.rows, "total");
+});
+$("cols").addEventListener("change", () => {
+  const c = +$("cols").value;
+  setGrid(c, $("keep").checked ? Math.round(c / aspect()) : +$("rows").value, "cols");
+});
+$("rows").addEventListener("change", () => {
+  const r = +$("rows").value;
+  setGrid($("keep").checked ? Math.round(r * aspect()) : +$("cols").value, r, "rows");
+});
+$("keep").addEventListener("change", () => { if ($("keep").checked) { const g = fromTotal(+$("total").value); setGrid(g.cols, g.rows, "total"); } });
+["style", "bright", "contrast", "auto", "dither", "invert"].forEach(id => $(id).addEventListener("input", schedule));
+$("mm").addEventListener("input", () => renderCounts());
+$("sec").addEventListener("change", () => { curSection = 0; buildSectionPicker(); renderSection(); drawOverlay(); });
+$("showSec").addEventListener("change", drawOverlay);
+$("zoom").addEventListener("click", () => {
+  const w = $("wrap"); w.classList.toggle("fit");
+  $("zoom").textContent = w.classList.contains("fit") ? "Zoom in" : "Fit to screen";
+  drawOverlay();
+});
+window.addEventListener("resize", drawOverlay);
+$("secPick").addEventListener("change", e => { curSection = +e.target.value; renderSection(); });
+$("prev").addEventListener("click", () => { const n = sections().length; curSection = (curSection - 1 + n) % n; $("secPick").value = curSection; renderSection(); });
+$("next").addEventListener("click", () => { const n = sections().length; curSection = (curSection + 1) % n; $("secPick").value = curSection; renderSection(); });
+$("print").addEventListener("click", printPlan);
+$("png").addEventListener("click", () => $("cv").toBlob(b => save(b, base() + ".png")));
+$("csv").addEventListener("click", () => {
+  const both = $("style").value === "both", lines = [];
+  for (let r = 0; r < grid.rows; r++) {
+    const row = [];
+    for (let c = 0; c < grid.cols; c++) { const code = grid.codes[r * grid.cols + c]; row.push((both ? (isBlack(code) ? "B" : "W") : "") + faceOf(code)); }
+    lines.push(row.join(","));
+  }
+  save(new Blob([lines.join("\n")], { type: "text/csv" }), base() + ".csv");
+});
+
+src = sample();
+const g0 = fromTotal(2500);
+setGrid(g0.cols, g0.rows, "total");
+</script>
+</body>
+</html>
